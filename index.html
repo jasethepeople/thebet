@@ -1,8 +1,16 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8">
+<html lang="en" data-theme="dark"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0e0e11">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src https://uechkunlijbtkufubxdo.supabase.co wss://uechkunlijbtkufubxdo.supabase.co; img-src 'self' data:; base-uri 'none'; form-action 'self'">
+<meta http-equiv="X-Frame-Options" content="DENY">
 <title>The Bet</title>
+<link rel="icon" type="image/png" sizes="32x32" href="assets/chip-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/chip-192.png">
+<link rel="apple-touch-icon" href="assets/chip-180.png">
+<meta property="og:title" content="The Bet — bragging rights for your friend group">
+<meta property="og:description" content="Crew betting with play-money BB. 18+.">
+<meta property="og:image" content="assets/chip-512.png">
 <style>
 :root{--bg:#f4f1ea;--card:#fff;--ink:#16140f;--mut:#6b665a;--acc:#e5481f;--ok:#1f9d55;--no:#c0262d;--line:#e2ddd0;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e0e11;--card:#18181d;--ink:#f3f1ea;--mut:#9a968a;--acc:#ff5a2c;--ok:#3ddc84;--no:#ff5c63;--line:#2a2a31}}
@@ -21,7 +29,12 @@ button.g{background:var(--line);color:var(--ink)}button.y{background:var(--ok)}b
 .bar{height:8px;border-radius:5px;background:var(--no);overflow:hidden;margin:6px 0}.bar i{display:block;height:100%;background:var(--ok)}
 nav{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom,0px)}
 nav button{flex:1;background:none;color:var(--mut);border-radius:0;padding:14px 2px;font-size:13px}nav button.on{color:var(--acc)}
-.share{background:linear-gradient(135deg,#e5481f,#7b1fa2);color:#fff;border-radius:14px;padding:16px;margin:8px 0}.share .q{color:#fff}
+.share{background:linear-gradient(135deg,#e5481f 0%,#b0337a 55%,#241046 100%);color:#fff;border-radius:16px;padding:18px;margin:8px 0;position:relative;overflow:hidden}
+.share .q{color:#fff;position:relative}
+.share .wm{position:absolute;right:-38px;bottom:-38px;width:190px;opacity:.5;pointer-events:none}
+.bigres{font-size:42px;font-weight:900;letter-spacing:-1px;line-height:1;margin:6px 0;position:relative}
+.pill{display:inline-block;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:3px 12px;font-size:12px;font-weight:800;letter-spacing:1px}
+.win{font-size:22px;font-weight:900;color:#ffe082;margin-top:8px;position:relative}
 .lb{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}
 .wheel{font-size:20px;font-weight:800;text-align:center;padding:24px 10px;min-height:96px}
 li{margin-bottom:6px}a{color:var(--acc)}
@@ -31,148 +44,7 @@ li{margin-bottom:6px}a{color:var(--acc)}
 .paywall h3{margin:0 0 6px;font-size:20px}
 </style></head>
 <body><main id="app"></main><nav id="nav"></nav>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
-<script>
-// 1) Supabase values (Project Settings > API). The publishable key is safe to expose.
-const SUPABASE_URL='https://uechkunlijbtkufubxdo.supabase.co',SUPABASE_KEY='sb_publishable_Qr7zD1bN-19MZerPi2CboQ_-Vz8RpGJ';
-// 2) Stripe Payment Link for the Pro unlock. The user's ID is attached on checkout so the
-//    webhook knows whose profile to flip. Create/manage it: Dashboard > Payment links.
-const PAY_LINK='https://buy.stripe.com/8x2aEW0QCaZ91JRf8LabK02';
-const PRO_PRICE='$4.99'; // display only — the real price is on the Stripe payment link. Keep in sync.
-
-const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
-const JOIN=new URLSearchParams(location.search).get('join')||'';
-const CK=new URLSearchParams(location.search).get('checkout')||'';
-let sb,me=null,prof=null,CR=[],cid=null,M={},B=[],FF=[],loaded=false,t='bets',pre='',signup=false,bound=false;
-let spicyOn=LS.get('bet_spicy')==='1',pwOpen=false;
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const val=id=>{const e=document.getElementById(id);return e?e.value.trim():''};
-const nm=id=>M[id]||'Someone',ids=()=>Object.keys(M),live=()=>B.filter(b=>!b.rep),crew=()=>CR.find(c=>c.id===cid)||{};
-const isPro=()=>!!(prof&&prof.pro);
-const tot=(b,s)=>{let x=0;for(const k in b.picks)if(b.picks[k].side===s)x+=b.picks[k].amt;return x};
-function payout(b,id){const p=b.picks,pk=p[id];if(!pk||b.st!=='done')return 0;let pool=0,win=0;for(const k in p){pool+=p[k].amt;if(p[k].side===b.res)win+=p[k].amt}
- if(win===0||win===pool)return pk.amt;return pk.side===b.res?Math.round(pool*pk.amt/win):0}
-function bal(id){let p=100;live().forEach(b=>{const pk=b.picks[id];if(pk){p-=pk.amt;p+=payout(b,id)}});return p}
-const T_W=['Called it. Pay respect.','Easiest points of my life.','Some of us just know things.','Write it down: I was right.'],T_L=['Thanks for the donation.','Better luck next season.','Bold take. Wrong, but bold.','Not your finest read.'];
-const T_WS=['Called it. Frame this.','Never doubted myself. You should have.','Free money. You are welcome for the lesson.','Sit back and watch a professional.'],T_LS=['Sit down.','Embarrassing. Truly.','Hope that read was free, because it cost you.','Wrong again. Consistent, at least.','Go touch grass and think about what you did.'];
-function taunt(b,res){const pk=b.picks,w=Object.keys(pk).filter(k=>pk[k].side===res).map(nm),l=Object.keys(pk).filter(k=>pk[k].side!==res).map(nm),r=a=>a[Math.floor(Math.random()*a.length)];
- return (w.length?w.join(', ')+': '+r(spicyOn?T_WS:T_W):'Nobody saw that coming.')+(l.length?' '+l.join(', ')+': '+r(spicyOn?T_LS:T_L):'')}
-async function run(p){const r=await p;if(r.error)alert(r.error.message);await load();return r}
-async function auth(){
- const e=val('em'),p=document.getElementById('pw').value;
- if(signup){const n=val('nm');
-  if(!document.getElementById('adult').checked)return alert('The Bet is for adults 18 and over.');
-  if(!n||!e||p.length<6)return alert('Add a name, an email, and a password of 6+ characters.');
-  const {data,error}=await sb.auth.signUp({email:e,password:p,options:{data:{name:n,adult:true}}});
-  if(error)return alert(error.message);
-  if(!data.session)alert('Check your email to confirm your account, then sign in.')}
- else{const {error}=await sb.auth.signInWithPassword({email:e,password:p});if(error)alert(error.message)}}
-const out=()=>sb.auth.signOut();
-async function mkCrew(){const n=val('cn');if(!n)return alert('Name your crew.');
- const r=await sb.rpc('create_crew',{crew_name:n,my_name:prof.name});if(r.error)return alert(r.error.message);cid=r.data.id;LS.set('bet_crew',cid);await load()}
-async function joinCrew(){const c=val('jc');if(!c)return alert('Enter the invite code.');
- const r=await sb.rpc('join_crew',{join_code:c,my_name:prof.name});if(r.error)return alert(r.error.message);cid=r.data.id;LS.set('bet_crew',cid);history.replaceState(null,'',location.pathname);await load()}
-const pickCrew=v=>{cid=v;LS.set('bet_crew',v);load()};
-async function invite(){const u=location.origin+location.pathname+'?join='+crew().code,x=`Join my crew "${crew().name}" on The Bet (18+, play money): ${u}`;
- try{if(navigator.share){await navigator.share({text:x});return}await navigator.clipboard.writeText(x);alert('Invite copied. Text it to your friends.')}catch(e){prompt('Copy this invite:',x)}}
-function addBet(){const s=val('subj'),q=val('q');if(!q)return alert('Write the bet first.');
- const fo2el=document.getElementById('fo2'),custom=fo2el?val('fo2'):'';
- if(custom&&!isPro()){pwOpen=true;render();return}
- const f=custom||(document.getElementById('fo')?document.getElementById('fo').value:'');pre='';t='bets';
- run(sb.from('bets').insert({crew_id:cid,subject:s,question:q,forfeit:f,status:f?'pending':'open'}))}
-function pick(id,side){const b=B.find(x=>x.id===id),a=parseInt(val('a'+id),10);
- if(b.subj===me)return alert(`You can't bet on yourself.`);if(b.picks[me])return alert('You already picked.');
- if(!(a>0)||a>bal(me))return alert('Pick an amount up to '+bal(me)+' BB.');
- run(sb.from('picks').insert({bet_id:id,side:side,amt:a}))}
-async function accept(id){const b=B.find(x=>x.id===id),n=Object.keys(b.acc).filter(k=>k!==me).length+1;
- const r=await sb.from('accepts').insert({bet_id:id});if(r.error)alert(r.error.message);
- else if(n>=ids().length)await sb.from('bets').update({status:'open'}).eq('id',id);await load()}
-const settle=(id,res)=>run(sb.from('bets').update({status:'done',result:res,line:taunt(B.find(x=>x.id===id),res)}).eq('id',id));
-const veto=id=>run(sb.from('bets').delete().eq('id',id));
-const report=id=>{if(confirm('Report this bet? It will be hidden for the crew.'))run(sb.from('bets').update({reported:true}).eq('id',id))};
-function cardText(b){const w=Object.keys(b.picks).filter(k=>b.picks[k].side===b.res).map(nm);
- return `THE BET (${crew().name})\n${b.q}\nResult: ${b.res.toUpperCase()}\nCalled it: ${w.join(', ')||'nobody'}\n${b.line||''}${b.fo?'\nOwed: '+b.fo:''}\nThink you can call it better? Join the crew — code ${crew().code||''} (18+, play money)`}
-function copyCard(id){const x=cardText(B.find(b=>b.id===id));try{navigator.clipboard.writeText(x).then(()=>alert('Copied. Paste it anywhere.'),()=>prompt('Copy this:',x))}catch(e){prompt('Copy this:',x)}}
-const mailCard=id=>{location.href='mailto:?subject='+encodeURIComponent('The Bet: settled')+'&body='+encodeURIComponent(cardText(B.find(b=>b.id===id)))};
-const P=['Will {n} actually finish what they started this month?','Will {n} be late to the next group hangout?','Will {n} text their ex before the season ends?','Will {n} hit their gym goal this month?','Will {n} get the job/offer they are chasing?','Will {n} stick to the diet for 2 weeks?','Will {n} cancel plans at least once this week?'];
-function spin(){const el=document.getElementById('wh'),ns=ids().map(nm);let i=0;
- const iv=setInterval(()=>{el.textContent=P[Math.floor(Math.random()*P.length)].replace('{n}',ns[Math.floor(Math.random()*ns.length)]);
-  if(++i>14){clearInterval(iv);pre=el.textContent;document.getElementById('use').style.display='block'}},90)}
-const useIt=()=>{t='new';render()},tab=x=>{t=x;render()};
-const flip=k=>{if(k==='s'){spicyOn=!spicyOn;LS.set('bet_spicy',spicyOn?'1':'0')}render()};
-async function buyPro(){
- if(!me)return alert('Sign in first.');
- // Attaching client_reference_id lets the stripe-webhook function match this
- // payment to the signed-in user's profile.
- location.href=PAY_LINK+'?client_reference_id='+encodeURIComponent(me)}
-async function restorePro(){const r=await sb.from('profiles').select('pro').eq('id',me).single();
- if(r.data&&r.data.pro){prof.pro=true;alert('Pro is active on your account.');render()}else alert('No Pro purchase found on this account yet. If you just paid, give it a minute and try again.')}
-function card(b){
- const pk=b.picks,y=tot(b,'yes'),n=tot(b,'no'),pc=y+n?Math.round(100*y/(y+n)):50,mine=pk[me],ac=b.acc;
- let h=`<div class="card"><div class="tag">About ${esc(nm(b.subj))}${b.st==='done'?' · settled':''}</div><div class="q">${esc(b.q)}</div>${b.fo?`<div class="sub">Losers owe: <b>${esc(b.fo)}</b></div>`:''}<div class="bar"><i style="width:${pc}%"></i></div><div class="sub">Yes ${y} BB · No ${n} BB · ${Object.keys(pk).length} in</div>`;
- if(b.st==='pending'){
-  h+=`<div class="sub">Everyone must accept the forfeit before this opens: ${Object.keys(ac).length}/${ids().length}</div>`;
-  if(!ac[me])h+=`<button style="width:100%" onclick="accept('${b.id}')">Accept the forfeit</button>`;
-  if(b.subj===me)h+=`<button class="g" style="width:100%;margin-top:8px" onclick="veto('${b.id}')">Veto and delete</button>`}
- else if(b.st==='open'){
-  if(b.subj!==me&&!mine)h+=`<input id="a${b.id}" type="number" value="10" min="1"><div class="row"><button class="y" onclick="pick('${b.id}','yes')">Yes</button><button class="n" onclick="pick('${b.id}','no')">No</button></div>`;
-  else if(mine)h+=`<div class="sub">You picked ${mine.side.toUpperCase()} for ${mine.amt} BB.</div>`;
-  if(b.subj===me)h+=`<button class="g" style="width:100%" onclick="veto('${b.id}')">Veto and refund (your call)</button>`;
-  else h+=`<div class="sub" style="margin-top:8px">Settle it (not the subject):</div><div class="row"><button class="g" onclick="settle('${b.id}','yes')">Happened</button><button class="g" onclick="settle('${b.id}','no')">Did not</button></div>`}
- else{const w=Object.keys(pk).filter(k=>pk[k].side===b.res).map(nm);
-  h+=`<div class="share"><div class="tag" style="color:#fff9">${esc(crew().name)} · settled</div><div class="q">${esc(b.q)}</div><b>${b.res==='yes'?'YES':'NO'}</b><br>Called it: ${esc(w.join(', ')||'nobody')}<br><i>${esc(b.line||'')}</i>${b.fo?`<br>Owed: ${esc(b.fo)}`:''}</div><div class="row"><button onclick="copyCard('${b.id}')">Copy card</button><button class="g" onclick="mailCard('${b.id}')">Email it</button></div>`}
- return h+`<div class="sub" style="text-align:right;margin:8px 0 0"><a href="#" onclick="report('${b.id}');return false" style="color:var(--mut)">Report</a></div></div>`}
-function render(){
- const app=document.getElementById('app'),nav=document.getElementById('nav');let h='';nav.innerHTML='';
- const H=`<h1>The <b>Bet</b></h1>`;
- if(!sb){app.innerHTML=H+`<div class="card">Setup needed: paste your Supabase URL and anon key at the top of index.html. See README.md.</div>`;return}
- if(!loaded){app.innerHTML=H+`<div class="sub">Loading...</div>`;return}
- if(!me){app.innerHTML=H+`<div class="sub">Bragging rights only. BB are play money. Adults 18+.</div><div class="card">${signup?'<input id="nm" placeholder="Your name">':''}<input id="em" type="email" placeholder="Email"><input id="pw" type="password" placeholder="Password (6+ characters)">${signup?'<label style="display:block;margin:6px 0"><input type="checkbox" id="adult" style="width:auto;margin-right:8px">I am 18 or older. This app is adults only.</label>':''}<button onclick="auth()" style="width:100%">${signup?'Create account':'Sign in'}</button><div class="sub" style="margin:10px 0 0;text-align:center"><a href="#" onclick="signup=!signup;render();return false">${signup?'Have an account? Sign in':'New here? Create an account'}</a></div></div>`;return}
- if(!prof){app.innerHTML=H+`<div class="card">Your profile is not set up. Sign out and create an account with the 18+ box checked.<br><br><button onclick="out()">Sign out</button></div>`;return}
- if(!cid){app.innerHTML=H+`<div class="sub">Hi ${esc(prof.name)}. Join a crew or start one.</div><div class="card"><div class="tag">Have an invite code?</div><input id="jc" value="${esc(JOIN)}" placeholder="Invite code"><button onclick="joinCrew()" style="width:100%">Join crew</button></div><div class="card"><div class="tag">Start a new crew</div><input id="cn" placeholder="Crew name"><button class="g" onclick="mkCrew()" style="width:100%">Create crew</button></div>`;return}
- h+=`<h1>The <b>Bet</b> · ${esc(crew().name)}${isPro()?'<span class="propill">PRO</span>':''}</h1><div class="sub">You are ${esc(nm(me))} · ${bal(me)} BB · ${ids().length} in crew · <a href="#" onclick="flip('s');return false">${spicyOn?'Spicy ON':'Friendly'}</a> · <a href="#" onclick="invite();return false">Invite</a></div>`;
- if(CR.length>1)h+=`<select onchange="pickCrew(this.value)">${CR.map(c=>`<option value="${c.id}"${c.id===cid?' selected':''}>${esc(c.name)}</option>`).join('')}</select>`;
- if(t==='bets'){const L=live();if(!L.length)h+=`<div class="card">No bets yet. Hit <b>New</b> or spin the <b>Wheel</b>.</div>`;L.forEach(b=>h+=card(b))}
- if(t==='new'){const o=ids().map(i=>`<option value="${i}"${i===me?' selected':''}>${esc(nm(i))}</option>`).join('');
-  const fos=FF.length?FF:['20 push-ups, video proof','Buys the next round','One push-up on video whenever the winner calls','Wears the winner\'s jersey for a day','Posts an embarrassing photo'];
-  h+=`<div class="card"><div class="tag">Who is it about?</div><select id="subj">${o}</select><div class="tag">The bet (yes/no question)</div><textarea id="q" rows="3" placeholder="Will Mike finish the marathon?">${esc(pre)}</textarea><div class="tag">Loser's forfeit (optional)</div><select id="fo"><option value="">No forfeit</option>${fos.map(f=>`<option>${esc(f)}</option>`).join('')}</select>${isPro()?'<input id="fo2" placeholder="Or write your own forfeit (Pro)">':'<div class="sub">Writing your own forfeit is a <b>Pro</b> feature — <a href="#" onclick="pwOpen=true;render();return false">unlock Pro ('+PRO_PRICE+')</a></div>'}<button style="width:100%" onclick="addBet()">Post bet</button><div class="sub" style="margin-top:8px">Crew members only. The subject can veto.</div></div>`}
- if(t==='board')h+=`<h2>Leaderboard</h2><div class="card">${ids().sort((a,b)=>bal(b)-bal(a)).map((i,k)=>`<div class="lb"><span>${k+1}. ${esc(nm(i))}</span><b>${bal(i)} BB</b></div>`).join('')}</div>`;
- if(t==='wheel')h+=`<h2>Fate Wheel</h2><div class="card"><div class="wheel" id="wh">Spin for a random bet</div><button style="width:100%" onclick="spin()">Spin</button><button id="use" class="g" style="width:100%;margin-top:8px;display:none" onclick="useIt()">Use this bet</button></div>`;
- if(t==='guide')h+=`<h2>Quick guide</h2><div class="card"><ol><li><b>Join:</b> sign up, confirm you are 18+, then join a crew with an invite code or start one. Tap Invite to text friends a link. Everyone starts with 100 BB (bragging bucks).</li><li><b>New bet:</b> write a yes/no question about a crew member, or spin the Wheel for one.</li><li><b>Forfeit:</b> pick a penalty. Everyone must accept it before the bet opens. Pro lets you write your own.</li><li><b>Pick:</b> stake some BB on Yes or No. You can't bet on yourself.</li><li><b>Settle:</b> someone other than the subject marks what happened. Winners split the pot by stake. If nobody was on the other side, everyone is refunded.</li><li><b>Veto:</b> the subject can delete a bet, and everyone is refunded.</li><li><b>Share:</b> settled bets make a card with your crew code on it. Copy or email it. Friendly/Spicy changes the trash talk.</li></ol><div class="row">${isPro()?'<button class="g" onclick="restorePro()">Pro: active — restore</button>':'<button onclick="pwOpen=true;render()">Upgrade to Pro ('+PRO_PRICE+')</button>'}<button class="g" onclick="out()">Sign out</button></div><div class="sub" style="margin-top:10px">Crew invite code: <b>${esc(crew().code||'')}</b>. BB are play money with no cash value: they can't be bought, cashed out, or traded. The Bet is 18+ only. Keep it to crew members who agreed to play.</div></div>`;
- app.innerHTML=h;
- if(pwOpen)app.innerHTML+=`<div class="paywall"><div><h3>The Bet <span class="propill" style="margin-left:0">PRO</span></h3><div class="sub" style="margin-bottom:10px">Write your own forfeits. Any dare, any stakes, your crew's rules.<br><br><b>${PRO_PRICE} once. Pro for life.</b><br>BB stay play money — you are unlocking a feature, never buying chips.</div><button style="width:100%" onclick="pwOpen=false;buyPro()">Unlock Pro</button><button class="g" style="width:100%;margin-top:8px" onclick="pwOpen=false;render()">Not now</button><div class="sub" style="margin-top:8px">18+. Already paid? <a href="#" onclick="pwOpen=false;restorePro();return false">Restore</a></div></div></div>`;
- nav.innerHTML=[['bets','Bets'],['new','New'],['board','Board'],['wheel','Wheel'],['guide','Guide']].map(x=>`<button class="${t===x[0]?'on':''}" onclick="tab('${x[0]}')">${x[1]}</button>`).join('')}
-function soft(){const a=document.activeElement;if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName)&&document.getElementById('app').contains(a))return;render()}
-async function load(){
- const ms=await sb.from('members').select('crew_id,crews(id,name,code)').eq('user_id',me);
- CR=(ms.data||[]).map(m=>m.crews).filter(Boolean);
- if(!CR.length){cid=null;loaded=true;render();return}
- if(!CR.find(c=>c.id===cid)){const s=LS.get('bet_crew');cid=CR.find(c=>c.id===s)?s:CR[0].id}
- const [a,b,k,c,f]=await Promise.all([sb.from('members').select('user_id,name').eq('crew_id',cid),sb.from('bets').select('*').eq('crew_id',cid).order('created_at',{ascending:false}),sb.from('picks').select('*'),sb.from('accepts').select('*'),sb.from('forfeits').select('label')]);
- M={};(a.data||[]).forEach(m=>M[m.user_id]=m.name);
- B=(b.data||[]).map(x=>({id:x.id,subj:x.subject,q:x.question,fo:x.forfeit,st:x.status,res:x.result,line:x.line,rep:x.reported,picks:{},acc:{}}));
- (k.data||[]).forEach(p=>{const x=B.find(y=>y.id===p.bet_id);if(x)x.picks[p.user_id]={side:p.side,amt:p.amt}});
- (c.data||[]).forEach(p=>{const x=B.find(y=>y.id===p.bet_id);if(x)x.acc[p.user_id]=1});
- FF=(f.data||[]).map(x=>x.label);
- loaded=true;soft()}
-function listen(){if(bound)return;bound=true;let tm;
- sb.channel('bet-all').on('postgres_changes',{event:'*',schema:'public'},()=>{clearTimeout(tm);tm=setTimeout(load,300)}).subscribe()}
-async function postCheckout(){
- if(CK!=='success')return;
- history.replaceState(null,'',location.pathname);
- for(let i=0;i<3;i++){const r=await sb.from('profiles').select('pro').eq('id',me).single();
-  if(r.data&&r.data.pro){prof.pro=true;alert('Pro unlocked. Write your own forfeits.');render();return}
-  await new Promise(r2=>setTimeout(r2,1500))}
- alert('Payment received — Pro should light up within a minute or two. If it does not, tap Guide > Restore.')}
-function init(){
- if(!window.supabase||SUPABASE_URL.startsWith('PASTE')){render();return}
- sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
- sb.auth.onAuthStateChange((ev,s)=>setTimeout(async()=>{
-  if(s){me=s.user.id;let r=await sb.from('profiles').select('*').eq('id',me).maybeSingle();prof=r.data;
-   const m=s.user.user_metadata||{};
-   if(!prof&&m.adult){const n=m.name||'Player';await sb.from('profiles').insert({id:me,name:n,adult:true});prof={id:me,name:n,adult:true}}
-   await load();listen();postCheckout()}
-  else{me=null;prof=null;cid=null;loaded=true;render()}},0));
- render()}
-init();
-</script></body></html>
+<script src="vendor/supabase.min.js"></script>
+<script src="vendor/qrcode.min.js"></script>
+<script src="app.js"></script>
+</body></html>
